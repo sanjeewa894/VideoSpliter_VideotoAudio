@@ -1,3 +1,7 @@
 {
-    "files": ["form.ui","mainwindow.py"]
+    "files": [
+        "ProcessVedioOps.py",
+        "form.ui",
+        "mainwindow.py"
+    ]
 }

@@ -1,19 +1,18 @@
 # This Python file uses the following encoding: utf-8
 import sys
-import os
 
-from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtWidgets import QApplication, QMainWindow, QProgressDialog
 from PySide6.QtWidgets import QFileDialog
-from PySide6.QtCore import QProcess
-from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
-from moviepy.editor import *
+from PySide6.QtCore import QThread, Qt, QEvent, QTimer, QObject, SIGNAL, Slot
 
-
+from PySide6 import QtCore
+from ProcessVedioOps import ProcessVedioOps, ProgressLogger
 # Important:
 # You need to run the following command to generate the ui_form.py file
 #     pyside6-uic form.ui -o ui_form.py, or
 #     pyside2-uic form.ui -o ui_form.py
 from ui_form import Ui_MainWindow
+
 
 class MainWindow(QMainWindow):
 
@@ -25,13 +24,55 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.ui = Ui_MainWindow()
-        self.ui.setupUi(self)
+        self.ui.setupUi(self)        
+        self.progressB = QProgressDialog("Wrapping Up. Please Wait....", None, 0, 0,None)
+        self.progressB.setWindowTitle("Aborting Process")
+        self.progressB.setWindowModality(Qt.WindowModal)
         self.ui.statusbar.showMessage('Ready');
+        self.progressB.findChild(QTimer).stop()
+        self.progressB.setHidden(1)
+        self.myLogger = ProgressLogger()
+        self.myLogger.progressValue.connect(self.showImediateProgress)
+        self.myLogger.progressText.connect(self.addTexted)
+        self.processor = ProcessVedioOps(MainWindow,self.progressB,self.myLogger)
+        self.processor.clearTextArea.connect(self.clearTexted)
+        self.processor.appendTextArea.connect(self.addTexted)
+        self.processor.mainProgress.connect(self.ui.progressBar.setValue)
+        self.processor.statusbarMsg.connect(self.ui.statusbar.showMessage)
+
         self.ui.timesFIle.released.connect(self.getTimesFile)
         self.ui.videoFIle.released.connect(self.getVideo)
+#        self.ui.splitVideo.released.connect(self.splitVideoToChunck)
+        self.processThread = QThread()
+        self.processor.moveToThread(self.processThread)
+        self.ui.splitVideo.released.connect(self.processor.splitVideoToChunck)
+        self.processThread.finished.connect(self.processThread.quit)
+        self.processThread.finished.connect(self.processor.deleteLater)
+        self.processThread.finished.connect(self.processThread.deleteLater)
+        self.processThread.start()
 
-        self.ui.splitVideo.released.connect(self.splitVideoToChunck)
+    def clearTexted(self):
+        self.ui.plainTextEdit.clear()
 
+    @Slot(str)
+    def addTexted(self, text):
+        self.ui.plainTextEdit.appendPlainText(text)
+
+    @Slot(int)
+    def showImediateProgress(self, value):
+        self.ui.progressBar_2.setValue(value)
+
+    def closeEvent(self, event):
+        print("\nQuit True\n",event)
+        #show popup
+        if event.type() == QEvent.Close:
+            print("\nExt Program\n")
+            self.processor.updateTermination()
+            self.processThread.quit()
+            self.processThread.wait()
+            print("\nExt Program\n")
+            self.progressB.close()
+            event.accept()
 
     def getTimesFile(self):
         fname = QFileDialog.getOpenFileName(self, "Open file", ".","Text files (*.txt)")
@@ -55,50 +96,7 @@ class MainWindow(QMainWindow):
 
         print(MainWindow.videoDir)
 
-    def splitVideoToChunck(self):
-        self.ui.plainTextEdit.clear();
-        if not os.path.exists(MainWindow.timeFileName):
-            self.ui.plainTextEdit.appendPlainText("Time file not found!");
-            print("Time file not found!");
-            return;
 
-        if not os.path.exists(MainWindow.videofilePath):
-            self.ui.plainTextEdit.appendPlainText("Video file not found!");
-            print("Video file not found!");
-            return;
-
-        targetN = MainWindow.videoDir + MainWindow.videofileName;
-        if not os.path.exists(targetN):
-            os.makedirs(targetN)
-
-        with open(MainWindow.timeFileName) as f:
-            times = f.readlines()
-        times = [x.strip() for x in times]
-
-        self.ui.statusbar.showMessage('Progressing. Please wait...');
-        progress = len(times);
-        self.ui.progressBar.setValue(0);
-        i=0;
-        # loading video dsa gfg intro video
-        clip = VideoFileClip(MainWindow.videofilePath);
-        self.ui.plainTextEdit.appendPlainText("Opened: "+MainWindow.videofilePath);
-        QApplication.processEvents();
-        for time in times:
-            starttime = (time.split("-")[0])
-            endtime = (time.split("-")[1])
-
-            self.ui.plainTextEdit.appendPlainText(time);
-
-            # getting only first 5 seconds
-            clip2 = clip.subclip(starttime, endtime)
-            # looping video 3 times
-            self.ui.plainTextEdit.appendPlainText("Write: "+targetN+"/"+MainWindow.videofileName+str(times.index(time)+1)+".mp4");
-            clip2.write_videofile(targetN+"/"+MainWindow.videofileName+str(times.index(time)+1)+".mp4");
-            i+=1;
-            self.ui.progressBar.setValue((i*100/progress));
-            QApplication.processEvents()
-
-        self.ui.statusbar.showMessage('Ready');
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
