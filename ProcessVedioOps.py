@@ -4,9 +4,10 @@ from PySide6 import QtCore
 from PySide6.QtCore import  Signal, QObject
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QTextCursor
-from moviepy.editor import VideoFileClip
 
 from proglog import ProgressBarLogger
+import moviepy.editor as mp
+import glob
 
 
 class ProgressLogger(QObject,ProgressBarLogger):
@@ -30,6 +31,7 @@ class ProcessVedioOps(QtCore.QObject):
     appendTextArea = Signal(str)
     mainProgress = Signal(int)
     statusbarMsg = Signal(str)
+    buttonStatus = Signal(bool)
 
     def __init__(self, mainWindow, progressB, logger):
         super().__init__()
@@ -67,10 +69,10 @@ class ProcessVedioOps(QtCore.QObject):
         self.mainProgress.emit(0);
         i=0;
         # loading video dsa gfg intro video
-        clip = VideoFileClip(self.mainWindow.videofilePath);
+        clip = mp.VideoFileClip(self.mainWindow.videofilePath);
         self.appendTextArea.emit(str("Opened: "+self.mainWindow.videofilePath));
         self.processRun = True
-
+        self.buttonStatus.emit(False)
         QApplication.processEvents();
         for time1 in times:
             print("\nQUit ", self.therdQuit)
@@ -90,10 +92,39 @@ class ProcessVedioOps(QtCore.QObject):
 
         self.progressB.cancel()
         self.processRun = False
+        self.therdQuit = False
+        self.buttonStatus.emit(True)
         QApplication.restoreOverrideCursor()
         self.statusbarMsg.emit('Ready');
 
+    def writeToMp3(self,pathtoRead,direct):
+        self.statusbarMsg.emit('Progressing. Please wait...');
+        fileList = glob.glob(pathtoRead+"/*.mp4")
+        if not os.path.exists(direct):
+            # Create a new directory because it does not exist
+            os.makedirs(direct)
 
-    def writeLogger(self,message):
-        print(message)
+        self.processRun = True
+        self.buttonStatus.emit(False)
+        progress = len(fileList);
+        i=0
+        self.mainProgress.emit(0);
+        for fileName in fileList:
+            if self.therdQuit== True:
+                break;
+            # Insert Local Video File Path
+            clip = mp.VideoFileClip(fileName)
+            output =  ((fileName.split("/")[-1]).replace(" ","")).replace(".mp4",".mp3")
+            print(fileName,output)
+            # Insert Local Audio File Path
+            clip.audio.write_audiofile(direct + "/" +output,logger=self.myLogger)
+            i+=1;
+            self.mainProgress.emit((i*100/progress));
+            QApplication.processEvents()
 
+        self.progressB.cancel()
+        self.processRun = False
+        self.therdQuit = False
+        self.buttonStatus.emit(True)
+        QApplication.restoreOverrideCursor()
+        self.statusbarMsg.emit('Ready');
